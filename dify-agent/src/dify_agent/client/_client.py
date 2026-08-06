@@ -36,7 +36,6 @@ from dify_agent.protocol import (
     DeleteHomeSnapshotRequest,
     DestroyExecutionBindingRequest,
     HomeSnapshotResponse,
-    InitializeHomeSnapshotRequest,
     RUN_EVENT_ADAPTER,
     RunEvent,
     RunEventsResponse,
@@ -384,8 +383,8 @@ class Client:
     async def cancel_run(self, run_id: str, request: CancelRunRequest | None = None) -> CancelRunResponse:
         """Request explicit cancellation for ``run_id``.
 
-        The server may accept cancellation only for active runs; unsupported
-        deployments return an HTTP error rather than overloading ``run_failed``.
+        Acceptance atomically persists the cancelled state. The process executing
+        the run observes that state and performs runner cleanup asynchronously.
         """
         request_model = request or CancelRunRequest()
         try:
@@ -529,24 +528,6 @@ class Client:
         response = self._post_sync_json("destroy_execution_binding_sync", "/execution-bindings/destroy", request)
         _raise_for_status(response)
 
-    async def initialize_home_snapshot(self, request: InitializeHomeSnapshotRequest) -> HomeSnapshotResponse:
-        """Create a backend-native initial Home Snapshot."""
-        response = await self._post_async_json(
-            "initialize_home_snapshot",
-            "/home-snapshots/initialize",
-            request,
-        )
-        return _parse_model_response(response, HomeSnapshotResponse)
-
-    def initialize_home_snapshot_sync(self, request: InitializeHomeSnapshotRequest) -> HomeSnapshotResponse:
-        """Synchronous variant of ``initialize_home_snapshot``."""
-        response = self._post_sync_json(
-            "initialize_home_snapshot_sync",
-            "/home-snapshots/initialize",
-            request,
-        )
-        return _parse_model_response(response, HomeSnapshotResponse)
-
     async def create_home_snapshot_from_binding(
         self,
         request: CreateHomeSnapshotFromBindingRequest,
@@ -619,11 +600,16 @@ class Client:
         with an id, reconnects resume from that id using the ``after`` query
         parameter. HTTP 5xx stream responses are retried, but HTTP 4xx responses,
         DTO validation failures, and malformed SSE frames are not retried. By
-        default iteration stops after a succeeded, failed, or cancelled terminal event.
+        default, ``until_terminal=True`` returns immediately after yielding a
+        succeeded, failed, or cancelled terminal event. With
+        ``until_terminal=False``, iteration may consume the remainder of the current
+        response, but after observing a terminal event it will not reconnect when that
+        response ends normally or raises a reconnectable transport error.
         """
         _validate_stream_options(max_reconnects, reconnect_delay_seconds, timeout_seconds)
         cursor = after or "0-0"
         reconnect_attempts = 0
+        terminal_event_seen = False
         deadline = time.monotonic() + timeout_seconds if timeout_seconds is not None else None
         while True:
             _raise_if_stream_stopped(run_id, deadline=deadline, should_stop=should_stop)
@@ -636,10 +622,14 @@ class Client:
                 ):
                     if event.id is not None:
                         cursor = event.id
+                    if event.type in _TERMINAL_EVENT_TYPES:
+                        terminal_event_seen = True
                     yield event
-                    if until_terminal and event.type in _TERMINAL_EVENT_TYPES:
+                    if until_terminal and terminal_event_seen:
                         return
             except _ReconnectableStreamError as exc:
+                if terminal_event_seen:
+                    return
                 if not reconnect:
                     raise exc.error from exc
                 reconnect_attempts = _next_reconnect_attempt(
@@ -650,6 +640,8 @@ class Client:
                 _raise_if_stream_stopped(run_id, deadline=deadline, should_stop=should_stop)
                 await _sleep_async(_bounded_sleep_seconds(reconnect_delay_seconds, deadline))
                 continue
+            if terminal_event_seen:
+                return
             if not reconnect:
                 return
             reconnect_attempts = _next_reconnect_attempt(
@@ -676,6 +668,7 @@ class Client:
         _validate_stream_options(max_reconnects, reconnect_delay_seconds, timeout_seconds)
         cursor = after or "0-0"
         reconnect_attempts = 0
+        terminal_event_seen = False
         deadline = time.monotonic() + timeout_seconds if timeout_seconds is not None else None
         while True:
             _raise_if_stream_stopped(run_id, deadline=deadline, should_stop=should_stop)
@@ -688,10 +681,14 @@ class Client:
                 ):
                     if event.id is not None:
                         cursor = event.id
+                    if event.type in _TERMINAL_EVENT_TYPES:
+                        terminal_event_seen = True
                     yield event
-                    if until_terminal and event.type in _TERMINAL_EVENT_TYPES:
+                    if until_terminal and terminal_event_seen:
                         return
             except _ReconnectableStreamError as exc:
+                if terminal_event_seen:
+                    return
                 if not reconnect:
                     raise exc.error from exc
                 reconnect_attempts = _next_reconnect_attempt(
@@ -702,6 +699,8 @@ class Client:
                 _raise_if_stream_stopped(run_id, deadline=deadline, should_stop=should_stop)
                 _sleep_sync(_bounded_sleep_seconds(reconnect_delay_seconds, deadline))
                 continue
+            if terminal_event_seen:
+                return
             if not reconnect:
                 return
             reconnect_attempts = _next_reconnect_attempt(

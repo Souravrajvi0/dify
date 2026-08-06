@@ -66,6 +66,19 @@ def _stream_with_request_context(response: object) -> Any:
     return cast(Any, stream_with_context)(response)
 
 
+def as_route_arg_str(value: object) -> str:
+    """Coerce Flask route arguments to ``str`` for typed APIs.
+
+    Bare ``str()`` calls on values that are already strings trigger pyrefly's
+    ``unnecessary-type-conversion`` rule, but removing them can still break
+    ``bad-return`` checks when the static type is ``object``. This helper keeps
+    both checks satisfied.
+    """
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
 def escape_like_pattern(pattern: str) -> str:
     """
     Escape special characters in a string for safe use in SQL LIKE patterns.
@@ -395,7 +408,7 @@ def extract_remote_ip(request: Request) -> str:
     if request.headers.get("CF-Connecting-IP"):
         return cast(str, request.headers.get("CF-Connecting-IP"))
     elif request.headers.getlist("X-Forwarded-For"):
-        return cast(str, request.headers.getlist("X-Forwarded-For")[0])
+        return request.headers.getlist("X-Forwarded-For")[0]
     else:
         return cast(str, request.remote_addr)
 
