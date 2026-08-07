@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   checkoutBuildDraft: vi.fn(),
   completeBuildConversation: undefined as (() => void) | undefined,
   deleteBuildDraft: vi.fn(),
+  downloadAgentSandboxFile: vi.fn(),
+  downloadWorkflowSandboxFile: vi.fn(),
   loadBuildDraft: vi.fn(),
   applyBuildDraft: vi.fn(),
   finalizeBuildChat: vi.fn(),
@@ -328,6 +330,11 @@ vi.mock('@/service/client', async () => {
                   }),
                 },
               },
+              download: {
+                post: {
+                  mutationOptions: () => ({ mutationFn: mocks.downloadAgentSandboxFile }),
+                },
+              },
               upload: {
                 post: {
                   mutationOptions: () => ({ mutationFn: mocks.uploadAgentSandboxFile }),
@@ -369,6 +376,13 @@ vi.mock('@/service/client', async () => {
                               Promise.resolve({
                                 text: 'result',
                               }),
+                          }),
+                        },
+                      },
+                      download: {
+                        post: {
+                          mutationOptions: () => ({
+                            mutationFn: mocks.downloadWorkflowSandboxFile,
                           }),
                         },
                       },
