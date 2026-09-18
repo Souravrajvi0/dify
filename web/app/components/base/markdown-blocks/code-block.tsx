@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
+import type ReactEchartsComponent from 'echarts-for-react'
+import type { ComponentProps, ComponentType, JSX } from 'react'
 import type { BundledTheme } from 'shiki/bundle/web'
 import { IconButton } from '@langgenius/dify-ui/icon-button'
 import { Toggle } from '@langgenius/dify-ui/toggle'
-import ReactEcharts from 'echarts-for-react'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import CopyIcon from '@/app/components/base/copy-icon'
-import MarkdownMusic from '@/app/components/base/markdown-blocks/music'
 import ErrorBoundary from '@/app/components/base/markdown/error-boundary'
 import useTheme from '@/hooks/use-theme'
 import dynamic from '@/next/dynamic'
@@ -14,6 +13,12 @@ import SVGRenderer from '../svg-gallery' // Assumes svg-gallery.tsx is in /base 
 import { highlightCode } from './shiki-highlight'
 
 const Flowchart = dynamic(() => import('@/app/components/base/mermaid'), { ssr: false })
+const ReactEcharts = dynamic(() => import('echarts-for-react'), {
+  ssr: false,
+}) as typeof ReactEchartsComponent
+const MarkdownMusic = dynamic(() => import('@/app/components/base/markdown-blocks/music'), {
+  ssr: false,
+}) as ComponentType<ComponentProps<typeof import('./music').default>>
 
 const capitalizationLanguageNameMap: Record<string, string> = {
   sql: 'SQL',
@@ -504,7 +509,7 @@ export const CodeBlock: any = memo(({ inline, className, children = '', ...props
       case 'abc':
         return (
           <ErrorBoundary>
-            <MarkdownMusic children={content} />
+            <MarkdownMusic>{content}</MarkdownMusic>
           </ErrorBoundary>
         )
       default:

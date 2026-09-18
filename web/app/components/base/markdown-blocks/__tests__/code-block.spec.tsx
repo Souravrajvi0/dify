@@ -220,6 +220,7 @@ describe('CodeBlock', () => {
           'const x = 1;',
         )
       })
+      expect(document.querySelector('.echarts-for-react')).toBeNull()
     })
 
     it('should format unknown language labels with capitalized fallback when language is not in map', () => {
